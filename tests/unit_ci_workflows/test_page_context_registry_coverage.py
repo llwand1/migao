@@ -28,6 +28,23 @@
 | 7 | **权限码真实存在** | 页面级 / 对象级码不在 admin-api 权限目录 ⇒ 红（复用既有对账守卫的解析器，**不造第二套**） |
 | 8 | **台账每条写清为什么 + 重启条件** | `reason` / `restart_condition` 缺或为空 ⇒ 红（缺口不许匿名存在） |
 | 9 | 🔴 **判别力自证**（注入式红证，内存里对各判据本体变异） | 摘一条登记 route / 加一条豁免 / 造悬挂 route / 造幽灵真值源 / 造幽灵权限码 / 只加注释 ⇒ **各自判红与否如预期** |
+| 10 | 🔴 **上屏字段里不得出现已移除的页面名**（issue #6842 · B3，跟踪 #6826） | `label` / `citation` 里出现「工艺配置页」这类**已撤销坐标** ⇒ 红，并**具名**报出该真值源 id 与那个名字 |
+
+## 判据 10 治的形态（MC-075 原来的射程缺口，逐字现取）
+
+`truth_source` 的 `label` 字段注释逐字写着「用户可见的中文来源名（**上屏用**）」、`citation` 写着
+「回复里**必须写出**它」—— 而判据 1~9 只核 route / 真值源名 / `path` / 权限码，**一个字都不核上屏文本**
+⇒ `craft-calc-glossary` 的来源名带着 issue #6580 已撤掉的坐标「**工艺配置页**」漂了几天，
+**没有任何东西会红**（登记齐全、判据全绿，话术却把商家指去**不存在的页面**）。
+
+判据 10 把「上屏话术里的页面名必须与当前 IA 一致」落成判据：真值源**现取**
+`frontend/admin-web/src/config/menu.ts` 的菜单名 ∪ `frontend/admin-web/src/lib/config-center-domains.ts`
+的域 label（与 MC-075 家族既有的「三源同构」口径同源，**不硬编码成新清单**），
+`label` / `citation` 的**显式引用形态**里的候选逐段核。
+
+🔴 **有意只扫字段字面量**：注释 / docstring / `path` **不进**语料 —— `page_registry.py` 里逐字保留着
+解释 #6580 撤项的注释（「参数总览」「工艺配置」），那是**历史说明**（`migao-dev-flow` §19.1 豁免面），
+判据 10 的**对照读数**（`test_control_revoked_name_only_in_comment_or_docstring_is_green`）正是为它设的。
 
 ## 为什么判据长这样（三条硬约束，逐条都踩过）
 
@@ -56,6 +73,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
@@ -68,6 +86,25 @@ PAGE_REGISTRY_PY = (
     REPO_ROOT / "backend" / "ai-agent-service" / "app" / "context" / "page_registry.py"
 )
 PARITY_GUARD = REPO_ROOT / "tests" / "unit_ci_workflows" / "test_agent_permission_parity.py"
+#: 「企业基础设置 = 配置指挥台」的**域目录单一真值模块**（issue #6580 起现存的域名都在这里）。
+#: 判据 10 的真值源之一 ⇒ **现取**，不许写成新清单。
+CONFIG_DOMAINS_TS = (
+    REPO_ROOT / "frontend" / "admin-web" / "src" / "lib" / "config-center-domains.ts"
+)
+#: 该模块里**两个商家可见的名数组** —— **都要收**（只收其中一个 = 真值源被**收窄** ⇒ 将来一条
+#: **正确**的引用（如「企业基础设置 → 生产执行」）会被判成「已移除的页面名」= **假红**，
+#: 而假红比假绿更难发现：有人会去「修」那段正确文案或给它加豁免）。
+#: - `CONFIG_ZONES` = 页面左栏第一层的**区名**（`企业与账号` / `余料与省料` / `报价与计费` / `生产执行`）；
+#: - `CONFIG_DOMAINS` = 第二层的**域名**（`算料口径` / `工艺路线` / …）。
+CONFIG_NAME_ARRAYS = ("CONFIG_ZONES", "CONFIG_DOMAINS")
+#: `CONFIG_ZONES` 的区名 —— **只作真值源「不许被收窄」的下界自证**（**不是**判据的允许名集合：
+#: 允许名集合仍然 100% **现取**）。区名改了 ⇒ 这里红，逼作者同批把真值源读法补齐
+#: （防「悄悄只读域名 ⇒ 区名引用被假红」）。
+CONFIG_ZONES_EXPECTED = ("企业与账号", "余料与省料", "报价与计费", "生产执行")
+#: 取 `label:` 值的 pattern —— 🔴 **逐字字面量，不许 f-string 拼接**：拼接会在
+#: `tests/unit_ci_workflows/test_guard_parsing_is_comment_aware.py` 的 AST 重建里退化成
+#: 「引号**紧跟**捕获组」的形态而**命中那条元守卫**（CI 实测红过一轮）。
+CONFIG_LABEL_PATTERN = r"^(?!\s*/).*\blabel:\s*'([^'\n]*)'"
 LEDGER_PATH = Path(__file__).with_name("page_context_exemptions_ledger.json")
 REGISTRATION_SERVICE = (
     REPO_ROOT / "backend" / "admin-api" / "src" / "main" / "java" / "com" / "migao"
@@ -83,6 +120,15 @@ PERMISSION_SERVICE = (
 EXEMPT_COUNT_MAX = 13
 #: 覆盖面（`coverage_boundary`）条数上限（同上：只许缩短；与台账 `coverage_boundary_frozen` 两处一致）。
 COVERAGE_BOUNDARY_COUNT_MAX = 4
+
+#: 🔴 **上屏字段**（`TruthSource` 上**给商家看**的那两个字段，逐字见 `page_registry.py` 的字段注释：
+#: `label` = 「用户可见的中文来源名（**上屏用**）」/ `citation` = 「回复里**必须写出**它」）。
+#: 判据 10 只扫这两个 —— **不扫 `path`**（技术字面量）、**不扫注释 / docstring**（§19.1 豁免面）。
+SCREENED_FIELDS = ("label", "citation")
+#: 上屏字段扫描面的**显式登记开关**（台账 `revoked_names_scan`；缺 ⇒ 红：静默收窄射程 = 偷绿）。
+REVOKED_SCAN_KEY = "revoked_names_scan"
+#: 该登记面每条必须带的键（与 `scanned_fields` 并列，缺一 ⇒ 红）。
+REVOKED_SCAN_KEYS = ("scanned_fields", "sources", "recompute", "restart_condition")
 
 #: 台账每条豁免必须带的键（缺一 ⇒ 红：「缺口不许匿名存在」）。
 EXEMPTION_KEYS = ("route", "reason", "restart_condition")
@@ -200,6 +246,110 @@ def parse_registry() -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     return entries, sources
 
 
+def parse_on_screen_texts(source: Optional[str] = None) -> Dict[str, str]:
+    """🔴 静态解析 `page_registry.py` ⇒ `{真值源 id: 上屏文本}`（**只取 `SCREENED_FIELDS`**）。
+
+    与 `parse_registry()` 同一把 AST 尺子（同一个 `_literal_kwargs`），**不造第二套解析器**：
+    运行时 `TruthSource.label` / `citation` 是 f-string / 变量拼接 ⇒ 这里取不到 ⇒ 该条**不进语料**，
+    由判据 10 的 fail-closed 面现取读数兜住（「没东西可判」不是通过）。
+
+    ⚠️ 只读**字段字面量** ⇒ **注释、docstring、`path` 一律不进语料** —— 那正是本判据要**排除**的面
+    （`migao-dev-flow` §19.1：解释性文字里的旧页名是**豁免面**，不是上屏面）。
+    """
+    assert PAGE_REGISTRY_PY.is_file(), f"登记表文件不存在：{PAGE_REGISTRY_PY}（路径漂移 ⇒ 红）"
+    tree = ast.parse(source if source is not None else PAGE_REGISTRY_PY.read_text(encoding="utf8"))
+    out: Dict[str, str] = {}
+    raw_sources = _module_assignment(tree, "TRUTH_SOURCES")
+    if isinstance(raw_sources, ast.Dict):
+        for key_node, value_node in zip(raw_sources.keys, raw_sources.values):
+            try:
+                key = ast.literal_eval(key_node)
+            except ValueError:
+                continue
+            kwargs = _literal_kwargs(value_node)
+            if not isinstance(key, str) or kwargs is None:
+                continue
+            text = "".join(
+                str(kwargs[f]) for f in SCREENED_FIELDS if isinstance(kwargs.get(f), str)
+            )
+            if text:
+                out[key] = text
+    return out
+
+
+def parse_from_source(source: str) -> Dict[str, str]:
+    """红证用的别名：**同一把** `parse_on_screen_texts` 尺子，吃的是**内存里的变异源码**。
+
+    单列一个名字只为让红证读起来是「换语料、不换判据」；实现**逐字**是同一个函数（不造第二条路径）。
+    """
+    return parse_on_screen_texts(source)
+
+
+def menu_item_names() -> List[str]:
+    """`menu.ts` 的**菜单项显示名**（`name` 字段；组头也有 `name` ⇒ 一并收，两个方向都收紧）。
+
+    🔴 **复用 MC-075 家族既有的规范解析器**（`test_agent_permission_parity.py` 的
+    `parse_menu_ts_nodes`），**不另起第二个 `menu.ts` 解析器** —— 那条纪律逐字写在它的 docstring 里
+    （「同一份文件被多处各解析一遍是 issue #3570 的教训」）。它同时天然**不吃注释**（结构化切块读字段），
+    也正是本判据需要的：注释里写一句 `name: '工艺配置'` 不得让旧名进「现存名」集合（进面 = 判据变**松** = 假绿）。
+    """
+    parity = _load_parity_module()
+    assert MENU_TS.is_file(), f"菜单单一源不存在：{MENU_TS}（路径漂移 ⇒ 红，不得静默跳过）"
+    nodes = parity.parse_menu_ts_nodes(MENU_TS.read_text(encoding="utf8"))
+    names = [n.name for n in nodes if getattr(n, "name", None)]
+    assert names, "menu.ts 解析出 0 个菜单名 ⇒ 判据 10 会空跑（fail-closed）"
+    return names
+
+
+def _ts_array_labels(source: str, declaration: str) -> List[str]:
+    """`export const <declaration> … = [ … ]` 里**每个对象**的 `label` 值（现取用）。
+
+    切块口径与 `parse_menu_ts_nodes` 切 `menu.ts` **同式**（按 `{ key: '` 起头切；
+    `\s*` 同时覆盖**单行**（`CONFIG_ZONES` 写成 `{ key: 'quote', label: … }`）与
+    **多行**（`CONFIG_DOMAINS` 写成 `{\n  key: …`）两种形态），
+    且只取**该声明之后到块结束之前**的范围 ⇒ 同文件里 `interface` 的字段说明等**不会**被捞进来。
+    """
+    marker = f"export const {declaration}"
+    assert marker in source, f"`{marker}` 不在域目录模块里（形态漂移 ⇒ 红，不得静默跳过）"
+    body = source[source.index(marker):]
+    end = body.find("\n]")
+    chunk = body[: end if end > 0 else len(body)]
+    labels: List[str] = []
+    for part in re.split(r"(?=\{\s*key: ')", chunk):
+        match = re.search(CONFIG_LABEL_PATTERN, part, re.M)
+        if match and match.group(1).strip() and match.group(1) not in labels:
+            labels.append(match.group(1))
+    return labels
+
+
+def domain_labels() -> List[str]:
+    """`config-center-domains.ts` 的**商家可见名**（`CONFIG_ZONES` 区名 ∪ `CONFIG_DOMAINS` 域名）。
+
+    ⚠️ **两个数组都收**（理由见模块级 `CONFIG_NAME_ARRAYS` 的注）：它们都在**同一页**上、
+    都是商家可见名。只收 `CONFIG_DOMAINS` 会让真值源**变窄** ⇒ 一条**正确**的引用
+    （如「企业基础设置 → 生产执行」，`生产执行` 是 `CONFIG_ZONES` 里的区名）会被判成
+    「已移除的页面名」= **假红**（假红比假绿更难发现：有人会去「修」正确文案或干脆加一条豁免）。
+
+    自证 = `test_domain_labels_ignore_commented_out_entries`（**两个数组各自**做注释化对照）。
+    """
+    assert CONFIG_DOMAINS_TS.is_file(), (
+        f"域目录单一真值模块不存在：{CONFIG_DOMAINS_TS}（路径漂移 ⇒ 红，不得静默跳过）"
+    )
+    source = CONFIG_DOMAINS_TS.read_text(encoding="utf8")
+    labels: List[str] = []
+    for declaration in CONFIG_NAME_ARRAYS:
+        for value in _ts_array_labels(source, declaration):
+            if value not in labels:
+                labels.append(value)
+    assert labels, "域目录解析出 0 个商家可见名 ⇒ 判据 10 会空跑（fail-closed）"
+    return labels
+
+
+def existing_page_names() -> List[str]:
+    """**现存页面名** = `menu.ts` 菜单名 ∪ `config-center-domains.ts` 域 label（与 MC-075 家族同源）。"""
+    return sorted(set(menu_item_names()) | set(domain_labels()))
+
+
 def load_ledger() -> Dict[str, Any]:
     assert LEDGER_PATH.is_file(), f"豁免台账不存在：{LEDGER_PATH}（路径漂移 ⇒ 红）"
     return json.loads(LEDGER_PATH.read_text(encoding="utf8"))
@@ -243,6 +393,8 @@ def problems_corpus_is_nonempty(
     sources: Dict[str, str],
     ledger: Dict[str, Any],
     catalog: Set[str],
+    on_screen: Optional[Dict[str, str]] = None,
+    **_: Any,
 ) -> List[str]:
     """判据 0：语料非空（fail-closed：「没东西可判」不是通过）。"""
     out: List[str] = []
@@ -252,6 +404,8 @@ def problems_corpus_is_nonempty(
         out.append("PAGE_REGISTRY 静默为空（AST 取不到字面量？）⇒ 判据会空跑")
     if not sources:
         out.append("TRUTH_SOURCES 静默为空（AST 取不到字面量？）⇒ 判据会空跑")
+    if on_screen is not None and not on_screen:
+        out.append("上屏字段语料静默为空（判据 10 会空跑）")
     if not exempt_routes(ledger):
         out.append("豁免台账 `exemptions` 为空 ⇒ 判据会空跑（且与「只许缩短」的口径不符）")
     if not catalog:
@@ -424,6 +578,123 @@ def problems_coverage_boundary_documented(ledger: Dict[str, Any], **_: Any) -> L
     return out
 
 
+#: 页面引用片段的**结尾词**（只有以它收尾的**括号内**片段才算页面引用，见 `_candidate_page_names`）。
+PAGE_NAME_SUFFIXES = ("页", "页面")
+#: 上屏文本里的**引用号**：本仓写「去哪个页面 / 指哪份文档」的固定形态 ⇒ 里面逐段**必须**是现存名。
+PAGE_REF_BRACKETS = (r"「([^「」]{2,40})」", r"《([^《》]{2,40})》")
+#: 上屏文本里的**补充括号**：绝大多数是描述性说明 ⇒ 只有以 `PAGE_NAME_SUFFIXES` 收尾的片段才进面。
+PAGE_PROSE_BRACKETS = (r"（([^（）]{2,40})）", r"\(([^()]{2,40})\)")
+
+
+def _candidate_page_names(text: str) -> List[str]:
+    """上屏文本里的**候选页面名** = 中文引用号 / 圆括号里的片段，再按分隔符切开。
+
+    形态（**有意窄**，只认「本仓已经在用的页面引用写法」）——**两类**：
+
+    - **引用号** `「…」` / `《…》`（{@link PAGE_REF_BRACKETS}）—— 声明「去哪个页面 / 指哪份文档」的固定写法
+      ⇒ 里面的整段（按 `·` / `｜` / `、` / 空白切开后逐段）**必须**是现存名；
+    - **补充括号** `（…）` / `(…)`（{@link PAGE_PROSE_BRACKETS}）—— 绝大多数是**描述性说明**
+      （`（变动前 → 变动后 · 原因枚举）`、`（工艺配置页·算料配置）`）⇒ **只有以「页 / 页面」收尾**的片段
+      才算页面引用（`工艺配置页` ✓；`原因枚举` ✗ 不进面）。
+
+    单段长度限 `2..24` 字、整段引用最长 `40` 字。
+
+    为什么**不**做全文子串匹配：上屏文本里会有「本店工序」这类**非页面名**的词（`工序` 是域名
+    `工序与部位单价` 的子串）⇒ 全文匹配会把合法文案喂红（`migao-dev-flow` §17.3 的假红形态，
+    且在 §19.1「只许缩短」下缩不掉）。收窄到「显式引用形态」是本判据的取舍，边界登记在台账的
+    `revoked_names_scan.candidate_face_boundary`。
+    """
+    out: List[str] = []
+    for pattern in PAGE_REF_BRACKETS:
+        for match in re.finditer(pattern, text):
+            for piece in re.split(r"[·・｜|/、,，\s]+", match.group(1)):
+                value = piece.strip()
+                if 2 <= len(value) <= 24 and value not in out:
+                    out.append(value)
+    for pattern in PAGE_PROSE_BRACKETS:
+        for match in re.finditer(pattern, text):
+            for piece in re.split(r"[·・｜|/、,，\s]+", match.group(1)):
+                value = piece.strip()
+                if 2 <= len(value) <= 24 and value.endswith(PAGE_NAME_SUFFIXES) and value not in out:
+                    out.append(value)
+    return out
+
+
+def problems_revoked_page_names_in_on_screen_text(
+    on_screen: Dict[str, str],
+    existing_names: Sequence[str],
+    ledger: Dict[str, Any],
+    **_: Any,
+) -> List[str]:
+    """判据 10：🔴 **上屏字段（`label` / `citation`）里不得出现已移除的页面名**。
+
+    ## 病（本判据要治的形态）
+
+    `label` / `citation` 逐字是**上屏用**的（字段注释：「用户可见的中文来源名（上屏用）」/
+    「回复里**必须写出**它」）⇒ 它们被逐字渲染给商家。而 MC-075 原有的八条判据只核    route / `truth_source` 名 / `path` / 权限码 —— **一个字都不核上屏文本**
+    ⇒ `craft-calc-glossary` 的 label 里带着 issue #6580 已撤掉的坐标「工艺配置页」漂了几天，
+    **没有任何东西会红**（这正是一个「登记齐全、判据全绿、话术却把商家指去不存在的页面」的形态）。
+
+    ## 判据形态（与 MC-075 家族同源，不另创一套）
+
+    **真值源现取、不硬编码**：现存页面名 = `menu.ts` 的菜单名 ∪ `config-center-domains.ts` 的域 label。
+    这是 MC-075 家族既有的「三源同构」口径（见 `tests/unit_ci_workflows/test_menu_three_sources_are_isomorphic.py`）
+    ⇒ 与「**上屏话术里的页面名必须与当前 IA 一致**」同源。`label` / `citation` 里出现的
+    判据形态：`label` / `citation` 里**成对中文引用号里的候选页面名**（`「…」` / `《…》`）必须 ∈ 现存名集合。
+
+    ⚠️ **只扫字段字面量**：注释 / docstring / `path` 一律不进语料 —— 那正是本判据**有意排除**的面
+    （§19.1：解释 #6580 撤项的注释可以逐字保留旧名）。**对照读数** = 只往注释里塞旧名 ⇒ **不红**。
+
+    ## fail-closed（「没东西可判」不是通过）
+
+    语料为空 / 现存名解析结果过窄（< 3）⇒ 红（防解析器被路径或写法漂移打断后**静默恒绿**）。
+    """
+    out: List[str] = []
+    existing = [n for n in existing_names if n]
+    if not on_screen:
+        out.append(
+            "`page_registry.py` 的 `TRUTH_SOURCES` **一个上屏字段都没解析出来** "
+            f"（`SCREENED_FIELDS` = {SCREENED_FIELDS}）⇒ 判据 10 会空跑（fail-closed）"
+        )
+    if len(existing) < 3:
+        out.append(
+            f"现存页面名只解析出 {len(existing)} 个（< 3）⇒ 真值源面疑似被路径 / 写法漂移打断"
+            "（「没东西可判」不是通过）"
+        )
+    allowed = set(existing)
+    for ts_id in sorted(on_screen):
+        for candidate in _candidate_page_names(on_screen[ts_id]):
+            if candidate not in allowed:
+                out.append(
+                    f"真值源 `{ts_id}` 的**上屏字段**里出现 `{candidate}` —— 它既不在 "
+                    "`frontend/admin-web/src/config/menu.ts` 的菜单名里，也不在 "
+                    "`frontend/admin-web/src/lib/config-center-domains.ts` 的域 label 里"
+                    "（已移除的页面名 / 坐标，如 issue #6580 撤掉的「工艺配置」「参数总览」「加工项管理」）"
+                    "⇒ 商家读到的来源名会把他指去**不存在的页面**。"
+                    "改为当前域名（`企业基础设置 → <域 label>`）或改成不含页面坐标的说法。"
+                )
+    # 显式登记面：台账 `revoked_names_scan` 必须写明扫描面（字段 + 真值源 + 重启条件，
+    # 且条数只许缩短）。理由：把 `SCREENED_FIELDS` 悄悄收窄 / 悄悄放宽，否则**没有任何东西会红**。
+    scan = (ledger or {}).get(REVOKED_SCAN_KEY)
+    if not isinstance(scan, dict) or not scan:
+        out.append(
+            f"豁免台账缺 `{REVOKED_SCAN_KEY}` ⇒ 上屏字段扫描面**静默无登记**（收窄射程 = 偷绿）"
+        )
+    else:
+        for key in REVOKED_SCAN_KEYS:
+            if not str(scan.get(key) or "").strip():
+                out.append(f"`{REVOKED_SCAN_KEY}` 缺 `{key}`（扫描面不许匿名）")
+        frozen = scan.get("frozen_extensions")
+        if not isinstance(frozen, int):
+            out.append(f"`{REVOKED_SCAN_KEY}` 缺 `frozen_extensions`（整数）⇒ 扩展面判不了（fail-closed）")
+        elif frozen != 0:
+            out.append(
+                f"`{REVOKED_SCAN_KEY}.frozen_extensions` = {frozen} ≠ 0"
+                "（本判据的豁免面**只许缩短**：当前就该是 0，写非 0 等于给旧名开口子）"
+            )
+    return out
+
+
 PROBLEM_SETS: Dict[str, ProblemFn] = {
     "corpus_is_nonempty": problems_corpus_is_nonempty,
     "coverage": problems_coverage,
@@ -433,12 +704,16 @@ PROBLEM_SETS: Dict[str, ProblemFn] = {
     "permission_codes_are_real": problems_permission_codes_are_real,
     "ledger_entries_documented": problems_ledger_entries_documented,
     "coverage_boundary_documented": problems_coverage_boundary_documented,
+    "revoked_page_names_in_on_screen_text": problems_revoked_page_names_in_on_screen_text,
 }
 
 
 #: 现取语料（模块级：判据与对照读数用**同一份**）。
 MENU_ROUTES: Tuple[str, ...] = tuple(menu_routes())
 PAGE_ENTRIES, TRUTH_PATHS = parse_registry()
+#: 上屏字段语料 + 现存页面名（**同一份现取**，判据 10 与它的红证/对照读数共用）。
+ON_SCREEN_TEXTS: Dict[str, str] = parse_on_screen_texts()
+EXISTING_NAMES: Tuple[str, ...] = tuple(existing_page_names())
 LEDGER = load_ledger()
 CATALOG: Set[str] = permission_catalog()
 
@@ -449,6 +724,8 @@ def _run_all(
     sources: Optional[Dict[str, str]] = None,
     ledger: Optional[Dict[str, Any]] = None,
     catalog: Optional[Set[str]] = None,
+    on_screen: Optional[Dict[str, str]] = None,
+    existing_names: Optional[Sequence[str]] = None,
 ) -> Dict[str, List[str]]:
     """跑全部判据（缺省 = 现取语料；注入式红证只换其中一项）。"""
     kw: Dict[str, Any] = {
@@ -457,6 +734,8 @@ def _run_all(
         "sources": TRUTH_PATHS if sources is None else sources,
         "ledger": LEDGER if ledger is None else ledger,
         "catalog": CATALOG if catalog is None else catalog,
+        "on_screen": ON_SCREEN_TEXTS if on_screen is None else on_screen,
+        "existing_names": EXISTING_NAMES if existing_names is None else existing_names,
     }
     return {name: fn(**kw) for name, fn in PROBLEM_SETS.items()}
 
@@ -467,7 +746,7 @@ def _run_all(
 
 
 def test_all_judgements_are_green(capsys) -> None:
-    """八条判据全绿 —— 并**打印现取读数**（绿得没有计数 = 未跑）。"""
+    """九条判据全绿 —— 并**打印现取读数**（绿得没有计数 = 未跑）。"""
     results = _run_all()
     for name, problems in results.items():
         assert not problems, f"判据 `{name}` 判红：\n" + "\n".join(f"  {p}" for p in problems)
@@ -478,6 +757,7 @@ def test_all_judgements_are_green(capsys) -> None:
             f"[页面上下文覆盖] 菜单页={len(MENU_ROUTES)} 条 / PAGE_REGISTRY={len(reg)} 条"
             f"（覆盖菜单页 {len(covered)} 条）/ 豁免台账={len(exempt_routes(LEDGER))} 条"
             f"（上限 {EXEMPT_COUNT_MAX}）/ 真值源={len(TRUTH_PATHS)} 条 / 权限目录现取={len(CATALOG)} 码"
+            f" / 上屏字段语料={len(ON_SCREEN_TEXTS)} 条真值源 / 现存页面名={len(EXISTING_NAMES)} 个"
         )
 
 
@@ -603,6 +883,187 @@ def test_control_comment_only_change_is_green() -> None:
     results = _run_all(entries=injected_entries, ledger=injected_ledger)
     for name, problems in results.items():
         assert not problems, f"只加了注释/元数据，判据 `{name}` 却判红：{problems}"
+
+
+def test_on_screen_corpus_is_not_hardcoded() -> None:
+    """判据 10 的**接线自证**：上屏语料与现存名**都现取**自真文件（否则判据会空跑 / 恒绿）。"""
+    assert ON_SCREEN_TEXTS, "AST 取不到 `TruthSource` 的 label / citation ⇒ 判据 10 是空跑"
+    assert set(ON_SCREEN_TEXTS) <= set(TRUTH_PATHS), (
+        "上屏语料出现了 `TRUTH_SOURCES` 之外的真值源 id ⇒ 两把 AST 尺子不同源"
+    )
+    labels = domain_labels()
+    names = menu_item_names()
+    assert labels and names, "域 label / 菜单名解析为空 ⇒ 判据 10 的真值源面是空跑"
+    missing = [n for n in labels if n not in EXISTING_NAMES] + [n for n in names if n not in EXISTING_NAMES]
+    assert not missing, f"这些名不是从真文件现取来的：{missing}"
+    # 现存名**不含**已移除的页面名（#6580 撤了三处：菜单项两个 + 一级项一个）
+    for revoked in ("工艺配置", "加工项管理", "参数总览"):
+        assert revoked not in EXISTING_NAMES, (
+            f"已移除的页面名 `{revoked}` 出现在现存名里 ⇒ 真值源面漂了（判据 10 会因此放过旧名）"
+        )
+
+
+def _mutate_truth_source_label(source: str, ts_id: str, new_label: str) -> str:
+    """把源码里 `ts_id` 那条 `TruthSource(...)` 的 `label` 字面量**在文本层**换成 `new_label`。
+
+    走 AST 定位 + 文本拼接（**不用** `ast.unparse` 重写整棵树：那会把整个文件格式洗一遍，
+    注入就不只是「改了一处字面量」）。改完用「再解析一次」自证注入**真的生效**。
+    """
+    tree = ast.parse(source)
+    raw_sources = _module_assignment(tree, "TRUTH_SOURCES")
+    assert isinstance(raw_sources, ast.Dict), "前提：`TRUTH_SOURCES` 是模块级 dict 字面量"
+    hit = None
+    for key_node, value_node in zip(raw_sources.keys, raw_sources.values):
+        try:
+            key = ast.literal_eval(key_node)
+        except ValueError:
+            continue
+        if key != ts_id:
+            continue
+        assert isinstance(value_node, ast.Call), f"`{ts_id}` 不是 `TruthSource(...)` 调用形态"
+        for kw in value_node.keywords:
+            if kw.arg == "label":
+                hit = kw.value
+                break
+    assert hit is not None and getattr(hit, "lineno", None), f"`{ts_id}` 没有可定位的 `label` 字面量"
+    segment = ast.get_source_segment(source, hit)
+    assert segment, "取不到 `label` 字面量的原始文本（坐标漂移）"
+    mutated = source.replace(segment, repr(new_label), 1)
+    assert mutated != source, "注入未生效（自证）：源码没变"
+    return mutated
+
+
+def test_red_proof_revoked_page_name_in_label_goes_red() -> None:
+    """🔴 **实例红证（真语料变异）**：把已移除的页名塞回某个 `label` ⇒ 判据 10 **当场判红并具名**。
+
+    注入对象 = 仓内真文件 `page_registry.py` 的**当前文本**（在内存里做 AST 定位 + 文本替换），
+    通过**同一把** `parse_on_screen_texts` 尺子重新解析 ⇒ 判据与红证同源（§23 G7）。
+    """
+    source = PAGE_REGISTRY_PY.read_text(encoding="utf8")
+    for revoked, why in (
+        ("算料口径与术语说明（工艺配置页 · 算料配置）", "#6580 撤掉的旧坐标「工艺配置页」（**括号补充**形态，正是本判据要抓的那一处）"),
+        ("算料口径与术语说明（参数总览页 · 算料配置）", "#6580 撤掉的一级项「参数总览」（同上形态，另一个旧名）"),
+        ("算料术语（《工艺配置》页）", "#6580 撤掉的菜单项「工艺配置」写进**书名号**"),
+        ("算料口径与术语说明（「参数总览」）", "#6580 撤掉的一级项写进**引用号**"),
+    ):
+        mutated = _mutate_truth_source_label(source, "craft-calc-glossary", revoked)
+        injected = parse_from_source(mutated)
+        assert "craft-calc-glossary" in injected, f"注入未生效（自证）：新 label 没进语料（{why}）"
+        assert injected["craft-calc-glossary"] != ON_SCREEN_TEXTS["craft-calc-glossary"]
+        problems = _run_all(on_screen=injected)["revoked_page_names_in_on_screen_text"]
+        assert problems, f"把 `{revoked}`（{why}）塞进 label 后仍判绿 ⇒ 判据 10 没有判别力"
+        assert any("craft-calc-glossary" in p for p in problems), f"判红但没具名报出该真值源：{problems}"
+        assert any(
+            tok in " ".join(problems) for tok in ("工艺配置", "参数总览", "加工项管理")
+        ), f"判红但没报出那个已移除的页名：{problems}"
+
+
+def test_control_revoked_name_only_in_comment_or_docstring_is_green() -> None:
+    """🔴 **对照读数**：只往**注释 / docstring** 里塞旧页名 ⇒ **不红**（§19.1 豁免面）。
+
+    这一条与上面那条**成对**：只证明「注入旧名会红」还不够 —— 还得证明红的**只有上屏字段**，
+    否则判据会去扫注释（而解释 #6580 撤项的注释**逐字**写着「工艺配置」「参数总览」，
+    那是**有意保留**的历史说明）⇒ 判据会被自己的文案喂红（§17.3 假红形态）。
+    """
+    source = PAGE_REGISTRY_PY.read_text(encoding="utf8")
+    injected_source = (
+        '"""判据 10 对照读数：dye 注释里的「工艺配置」/「参数总览」/「加工项管理」不算上屏。"""\n'
+        + source
+        + "\n# 行尾注释也可以逐字留着：「工艺配置」「参数总览」「加工项管理」\n"
+    )
+    assert injected_source != source, "注入未生效（自证）"
+    injected = parse_from_source(injected_source)
+    assert injected == ON_SCREEN_TEXTS, "注释/docstring 竟进了上屏语料 ⇒ 判据会扫错面"
+    problems = _run_all(on_screen=injected)["revoked_page_names_in_on_screen_text"]
+    assert not problems, f"只往注释 / docstring 里塞旧名就判红 ⇒ 判据扫到了豁免面：{problems}"
+    # 反向对照：同一份语料**不动**时也确实不红（排除「恒红」）
+    assert not _run_all()["revoked_page_names_in_on_screen_text"], "现取语料本身判红（实例未修完）"
+
+
+def test_red_proof_revoked_name_scan_face_unregistered_goes_red() -> None:
+    """判据 10 的**显式登记面**红证：台账里撤掉 / 掏空 `revoked_names_scan` ⇒ 判红。
+
+    为什么要有这一条：扫描面（扫哪些字段）本身写在台账里 ⇒ 有人把 `scanned_fields` 从
+    `("label", "citation")` 悄悄收窄一个字段、或整块删掉，**必须**有东西变红。
+    """
+    without = {k: v for k, v in LEDGER.items() if k != REVOKED_SCAN_KEY}
+    assert REVOKED_SCAN_KEY in LEDGER and REVOKED_SCAN_KEY not in without, "注入未生效（自证）"
+    r_missing = _run_all(ledger=without)["revoked_page_names_in_on_screen_text"]
+    assert r_missing and any(REVOKED_SCAN_KEY in p for p in r_missing), (
+        f"台账缺 `{REVOKED_SCAN_KEY}` 仍判绿 ⇒ 扫描面可以静默消失：{r_missing}"
+    )
+
+    narrowed = dict(LEDGER)
+    narrowed[REVOKED_SCAN_KEY] = dict(LEDGER[REVOKED_SCAN_KEY], scanned_fields="")
+    r_narrowed = _run_all(ledger=narrowed)["revoked_page_names_in_on_screen_text"]
+    assert r_narrowed and any("scanned_fields" in p for p in r_narrowed), (
+        f"`scanned_fields` 被掏空仍判绿 ⇒ 收窄射程 = 偷绿：{r_narrowed}"
+    )
+
+    widened = dict(LEDGER)
+    widened[REVOKED_SCAN_KEY] = dict(LEDGER[REVOKED_SCAN_KEY], frozen_extensions=1)
+    r_widened = _run_all(ledger=widened)["revoked_page_names_in_on_screen_text"]
+    assert r_widened and any("frozen_extensions" in p for p in r_widened), (
+        f"豁免面写成非 0 仍判绿 ⇒ 只许缩短没牙：{r_widened}"
+    )
+
+
+def test_red_proof_empty_on_screen_corpus_goes_red() -> None:
+    """判据 10 的 **fail-closed** 红证：「没东西可判」**不是通过**（解析器被打断 ⇒ 判红，不恒绿）。"""
+    r_empty = _run_all(on_screen={})["revoked_page_names_in_on_screen_text"]
+    assert r_empty, "上屏语料为空却判绿 ⇒ 解析器一漂判据就恒绿（fail-open）"
+    r_tiny = _run_all(existing_names=("算料口径",))["revoked_page_names_in_on_screen_text"]
+    assert r_tiny, "现存名只剩 1 个却判绿 ⇒ 真值源面被打断时判据会放宽成恒绿"
+
+
+def test_domain_labels_ignore_commented_out_entries() -> None:
+    """🔴 真值源读法自证：**注释掉的** `label:` / `name:` **不得**进「现存名」集合。
+
+    为什么单列一条：真值源读法**变宽 = 判据变松**（把已移除的页名当「现存名」⇒ 判据 10 反而**放行**旧名）。
+    三个面各自自证：
+
+    - **锚点注释无关**：把 `// label: '…'` / `/* label: '…' */` 那种行喂给 `CONFIG_LABEL_PATTERN` ⇒ 读 **0** 个
+      （`^(?!\s*/)` = 行首**不许**是 `/` ⇒ `//` / `/*` 打头的注释行**结构上**不匹配；`.*` 让它同时吃**单行**与**多行**对象；
+      该 pattern **逐字字面量**、不拼接 —— 拼接会在元守卫的 AST 重建里退化成「引号紧跟捕获组」形态而命中它）；
+    - **注入真语料**：把一条 `// label: '工艺配置页'` 真塞进 `CONFIG_DOMAINS` 块**内部** ⇒
+      规范读法**读不到它**，而所有**真**域名一个不少（对照读数）；
+    - **`menu.ts`**：走既有 `parse_menu_ts_nodes`（结构化切块）⇒ 解析出的每个名字逐条能按
+      `name: '…'` 在源文件里找到（排除「从注释 / 别处捞的」）。
+    """
+    assert not re.search(CONFIG_LABEL_PATTERN, "// label: '工艺配置页'", re.M), (
+        "锚点注释无关自证：`// label: '…'` 竟被 pattern 读到了"
+    )
+    assert not re.search(CONFIG_LABEL_PATTERN, "/* label: '参数总览' */", re.M), (
+        "锚点注释无关自证：块注释里的 `label: '…'` 竟被 pattern 读到了"
+    )
+    assert re.search(CONFIG_LABEL_PATTERN, "    label: '算料口径',", re.M), (
+        "前提自证：pattern 对**活**的 `label:` 行是能读的"
+    )
+
+    src = CONFIG_DOMAINS_TS.read_text(encoding="utf8")
+    real = _ts_array_labels(src, "CONFIG_DOMAINS")
+    assert real, "前提自证：现取域名不该为空"
+    anchor = "  {\n    key: 'calc',"
+    assert anchor in src, "前提自证：定位不到 `calc` 域对象（形态漂移）⇒ 换一个锚点再注入"
+    injected_src = src.replace(
+        anchor, "  // label: '工艺配置页'（红证注入：注释行不得进语料）\n" + anchor, 1
+    )
+    assert injected_src != src, "注入未生效（自证）"
+    after = _ts_array_labels(injected_src, "CONFIG_DOMAINS")
+    assert after == real, f"注释行进了语料（假绿方向）：{set(after) ^ set(real)}"
+    assert "工艺配置页" not in after, "注释里的旧页名被当成域名读进来了"
+
+    labels = domain_labels()
+    assert labels, "商家可见名现取为空（fail-closed）"
+    missing = [n for n in CONFIG_ZONES_EXPECTED if n not in labels]
+    assert not missing, (
+        f"`CONFIG_ZONES` 的区名没进真值源（真值源被收窄 ⇒ 正确的引用会被假红）：{missing}"
+    )
+    menu = menu_item_names()
+    assert menu, "菜单名现取为空（fail-closed）"
+    menu_src = MENU_TS.read_text(encoding="utf8")
+    orphans = [n for n in menu if f"name: '{n}'" not in menu_src]
+    assert not orphans, f"这些菜单名不是从源文件的菜单项字段现取来的（疑似从注释 / 别处捞的）：{orphans}"
 
 
 def test_this_judgement_is_pure_static_and_never_skips() -> None:
