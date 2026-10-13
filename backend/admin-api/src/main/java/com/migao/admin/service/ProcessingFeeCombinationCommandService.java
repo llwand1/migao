@@ -112,7 +112,7 @@ public class ProcessingFeeCombinationCommandService {
             throw BusinessException.validationError(
                     String.format("加工费组合未通过校验（%d 条问题）", details.size()),
                     details,
-                    "逐条修好后重新提交；加工项目录查看入口 GET /api/admin/processing/items");
+                    "逐条修好后重新提交");
         }
         String key = compositionKey(canonical);
         rejectDuplicate(key, null, tenantId);
@@ -317,7 +317,7 @@ public class ProcessingFeeCombinationCommandService {
             }
             if (!library.containsKey(name)) {
                 details.add(BusinessException.detail(field, String.format(
-                        "加工项「%s」在加工项目录中不存在或已停用：请先在「加工项管理」新增该加工项，"
+                        "加工项「%s」在加工项目录中不存在或已停用：请先在「企业基础设置 → 加工项与分类」新增该加工项，"
                                 + "或从目录里已有的加工项里选", name)));
                 continue;
             }

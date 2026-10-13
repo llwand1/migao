@@ -1948,7 +1948,13 @@ class ProcessingOrderServiceTest {
         // 现在 message 只报**逻辑名**（`拼1次`）+ 说清缺什么；变体名一律不上响应体。
         assertThat(results.get(0).getMessage()).as("指名报缺：报的是**逻辑工序名**（拼1次）")
                 .contains("拼1次");
-        assertThat(results.get(0).getSuggestion()).as("失败必须可行动").contains("operations-catalog");
+        assertThat(results.get(0).getSuggestion()).as("失败必须可行动").contains("工序库");
+        // 🔴 判别性那半（issue #6839）：改前这条 suggestion 结尾挂着内部端点从句
+        // （「…；工序库目录查看入口 GET /api/admin/production/operations-catalog」）⇒ 商家读不懂也点不了（§31 P3）。
+        // 只写 `contains("工序库")` 是**空断言**（改前改后都绿）⇒ 必须配负向断言。收敛判据（类级）= MC-097。
+        assertThat(results.get(0).getSuggestion())
+                .as("不得泄漏内部端点（§31 P3；改前挂着 operations-catalog 端点从句）")
+                .doesNotContain("查看入口").doesNotContain("/api/").doesNotContain("operations-catalog");
         verify(processingOrderMapper, never()).insert(any(ProcessingOrder.class));
         verify(positionOperationMapper, never()).insert(any(ProcessingPositionOperation.class));
     }
@@ -1980,7 +1986,9 @@ class ProcessingOrderServiceTest {
                 .contains("拼1次").contains("布帘");
         assertThat(results.get(0).getSuggestion())
                 .as("suggestion 同样不得泄漏变体名").doesNotContain("-布").doesNotContain("-纱").doesNotContain("-帘")
-                .as("补救入口仍在").contains("operations-catalog");
+                .as("真边界仍在（suggestion 说清去哪补工序）").contains("工序库")
+                .as("且不得泄漏内部端点（§31 P3；改前这里挂着 operations-catalog 端点从句）")
+                .doesNotContain("查看入口").doesNotContain("/api/").doesNotContain("operations-catalog");
         verify(processingOrderMapper, never()).insert(any(ProcessingOrder.class));
         verify(positionOperationMapper, never()).insert(any(ProcessingPositionOperation.class));
     }
@@ -2302,9 +2310,15 @@ class ProcessingOrderServiceTest {
         // 空库（零路线模板 ∧ 零默认工艺）⇒ 两条 fail-closed 都成立；判据 = 可行动地中止生成，
         // 不回退任何常量/加工项目录（具体措辞由实现选，不把文案当判据）
         assertThat(results.get(0).getMessage()).contains("无法实例化工序");
-        // 可见性②：可行动 suggestion（说出补救入口）
+        // 可见性②：可行动 suggestion。本夹具 = **零路线模板 ∧ 零默认工艺** ⇒ 实际命中的是
+        // 「缺 craft 且无默认工艺」那条 fail-closed，suggestion 说清**真边界**（商家面无默认工艺维护入口）
+        // + **真出路**（下单时给出工艺）；旧坐标「工艺配置」与内部端点从句都**不许**再出现（issue #6839 / §31 P3）。
         assertThat(results.get(0).getSuggestion())
-                .contains("/api/admin/production/routings");
+                .as("真边界 + 真出路仍在")
+                .contains("默认工艺").contains("下单时给出工艺")
+                .as("陈旧页面名与内部端点都不许出现（改前挂着「工艺配置」与 /api/admin/production/routings）")
+                .doesNotContain("工艺配置").doesNotContain("查看入口")
+                .doesNotContain("/api/").doesNotContain("production/routings");
         // 不落半成品：一行不写、订单状态不动（否则会留下「有加工单、无工序、无 qr_token」的孤儿态）
         verify(processingOrderMapper, never()).insert(any(ProcessingOrder.class));
         verify(orderService, never()).updateOrderStatus(anyString(), anyString());
@@ -2330,7 +2344,9 @@ class ProcessingOrderServiceTest {
         assertThat(results.get(0).getCode()).isEqualTo(ProcessingOrderService.ERR_OPERATION_NOT_FOUND);
         assertThat(results.get(0).getMessage()).as("指名报缺：报的是**逻辑工序名**（韩褶），可行动建议给库入口")
                 .contains("韩褶");
-        assertThat(results.get(0).getSuggestion()).contains("/api/admin/production/operations-catalog");
+        assertThat(results.get(0).getSuggestion()).contains("工序库")
+                .as("不得泄漏内部端点（§31 P3；改前挂着 /api/admin/production/operations-catalog）")
+                .doesNotContain("查看入口").doesNotContain("/api/").doesNotContain("operations-catalog");
         verify(processingOrderMapper, never()).insert(any(ProcessingOrder.class));
     }
 
@@ -2375,7 +2391,10 @@ class ProcessingOrderServiceTest {
                 .as("改前：静默滤掉 ⇒ 生成成功但少一道（本断言红）").isFalse();
         assertThat(results.get(0).getCode()).isEqualTo(ProcessingOrderService.ERR_OPERATION_NOT_FOUND);
         assertThat(results.get(0).getMessage()).as("指名报出主线里那个**不认识的名字**").contains("精裁-布");
-        assertThat(results.get(0).getSuggestion()).as("失败必须可行动").contains("operations-catalog");
+        assertThat(results.get(0).getSuggestion()).as("失败必须可行动").contains("工序库");
+        assertThat(results.get(0).getSuggestion())
+                .as("不得泄漏内部端点（§31 P3；改前挂着 operations-catalog 端点从句）")
+                .doesNotContain("查看入口").doesNotContain("/api/").doesNotContain("operations-catalog");
         verify(processingOrderMapper, never()).insert(any(ProcessingOrder.class));
         verify(positionOperationMapper, never()).insert(any(ProcessingPositionOperation.class));
     }
