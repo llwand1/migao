@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Modal } from '@/components/ui'
 import { batchStockApi, processingOrderApi } from '@/lib/api'
 // 工艺规格展示的单一真值定义（设计文档 §4.9「一份 spec，三处渲染」）
-import { craftSpecLine, craftSpecRows } from '@/lib/craft-display'
+import { craftSpecLine } from '@/lib/craft-display'
+// 「工艺行但不要门幅」的唯一实现（issue #6893：本组件已在属性行里印过门幅）
+import { craftRowsWithoutDoorWidth } from '@/lib/order-item-sku'
 // 状态文案单一来源：与列表页共用（加工单状态机语义见 lib/processing-order.ts）
 import { PROCESSING_ORDER_STATUS_LABELS as STATUS_TEXT } from '@/lib/processing-order'
 // 米数展示口径（0.1 米粒度、去尾随 .0）—— 与库存/批次账同一份工具
@@ -155,8 +157,9 @@ function toPlainText(po: ProcessingOrder): string {
       it.quantity != null ? `数量:${it.quantity}${it.unit ?? ''}` : '',
     ].filter(Boolean)
     if (attrs.length) lines.push(`  ${attrs.join('  ')}`)
-    // 工艺规格（issue #4355 / 设计文档 §4.9 ③）：加工方拿到的文本必须带工艺，否则车间按老习惯做
-    const specRows = craftSpecRows(it)
+    // 工艺规格（issue #4355 / 设计文档 §4.9 ③）：加工方拿到的文本必须带工艺，否则车间按老习惯做。
+    // 🔴 issue #6893：**去掉「门幅」**—— 上一行属性里已经写了 `门幅:…`（同一份文本里印两遍）。
+    const specRows = craftRowsWithoutDoorWidth(it)
     if (specRows.length) lines.push(`  工艺规格：${specRows.map(craftSpecLine).join('  ')}`)
     ;(it.processingItems ?? []).forEach((p) => {
       const opt = Array.isArray(p.options) && p.options.length ? `（${p.options.join('/')}）` : ''
@@ -495,8 +498,9 @@ export default function ProcessingOrderBlock({
           {/* 快照明细（不含销售价——决策 2） */}
           <div className="mt-3 space-y-3">
             {(po.items ?? []).map((it, idx) => {
-              // 工艺规格（issue #4355 / 设计文档 §4.9 ③）：渲染快照里固化的那一份，缺值行已丢弃
-              const specRows = craftSpecRows(it)
+              // 工艺规格（issue #4355 / 设计文档 §4.9 ③）：渲染快照里固化的那一份，缺值行已丢弃。
+              // 🔴 issue #6893：去掉「门幅」—— 紧跟的属性行里已印 `门幅 …`。
+              const specRows = craftRowsWithoutDoorWidth(it)
               return (
               <div key={idx} className="rounded-md bg-neutral-50 p-3 text-sm">
                 <div className="font-medium text-neutral-900">

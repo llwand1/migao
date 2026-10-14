@@ -281,21 +281,28 @@ describe('ProcessingOrderBlock 排料结果展示（V119 / issue #5158）', () =
     const text = writeText.mock.calls[0][0] as string
     expect(text).toContain('工艺：韩褶')
     expect(text).toContain('加工类型：定高买宽')
-    // 门幅（issue #5022）：SKU 原串 '2.8米' 走同一份解析 ⇒ 复制文本里也带上（贴 Excel 不丢）
-    expect(text).toContain('门幅：2.8米')
+    // 门幅（issue #5022 的意图）：SKU 原串 '2.8米' 走同一份解析 ⇒ 复制文本里**仍然**带上（贴 Excel 不丢）。
+    // 🔴 issue #6893：只印**一处** —— 属性行 `门幅:2.8米`（紧邻的「工艺规格」那行不再重复同一真值）。
+    expect(text).toContain('门幅:2.8米')
+    expect((text.match(/门幅/g) ?? []).length).toBe(1)
     expect(text).toContain('打开方式：双开')
     expect(text).toContain('总褶数：52')
     expect(text).toContain('是否对花：是')
     expect(text).not.toMatch(/undefined|null|NaN/)
   })
 
-  it('#5022：快照带 SKU 门幅 ⇒ 规格块渲染「门幅」行（加工单纸面看得到系统按几米算的）', async () => {
+  it('#5022 + #6893：加工单上看得到「门幅」（属性行承担），规格块不再重复同一行', async () => {
     mockedDetail.mockResolvedValueOnce({ data: { data: poWithCraft } })
-    render(<ProcessingOrderBlock orderId="order-001" orderStatus="producing" hasProcessing />)
+    const { container } = render(
+      <ProcessingOrderBlock orderId="order-001" orderStatus="producing" hasProcessing />
+    )
 
-    const spec = await screen.findByTestId('po-item-craft-spec')
-    expect(within(spec).getByText('门幅')).toBeInTheDocument()
-    expect(within(spec).getByText('2.8米')).toBeInTheDocument()
+    // #5022 的意图**不砍**：门幅在加工单上看得见（`加工单纸面看得到系统按几米算的`）
+    await screen.findByTestId('po-item-craft-spec')
+    expect(container.textContent).toContain('门幅 2.8米')
+    // #6893：同一块里**只印一处** —— 规格块不再重复「门幅」行（改前这里有一行，判据恒绿）
+    expect(within(screen.getByTestId('po-item-craft-spec')).queryByText('门幅')).toBeNull()
+    expect((container.textContent?.match(/门幅/g) ?? []).length).toBe(1)
   })
 
   it('缺值不渲染：存量单无工艺键 ⇒ 无规格块，复制文本也不出现 undefined/null/NaN（PG-019）', async () => {
@@ -674,3 +681,27 @@ describe('ProcessingOrderBlock 部位备注（issue #5685）', () => {
     }
   })
 })
+
+/**
+ * issue #6893：加工单里「门幅」在**同一块文本**里只许出现一次。改前快照块既印属性行
+ * `门幅 2.8米`，又印 `craftSpecRows()` 的「门幅」行；「复制全部」的文本同理（同一份拼装）。
+ */
+describe('加工单门幅不重复（issue #6893）', () => {
+  it('快照块与「复制全部」文本里「门幅」各只出现一次', async () => {
+    mockedDetail.mockResolvedValueOnce({ data: { data: poWithCraft } })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    const { container } = render(
+      <ProcessingOrderBlock orderId="order-001" orderStatus="producing" hasProcessing />
+    )
+    await screen.findByText('JG-20260912-0001')
+    await userEvent.click(screen.getByText('复制全部'))
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+
+    const text = writeText.mock.calls[0][0] as string
+    expect((text.match(/门幅/g) ?? []).length).toBe(1)
+    expect((container.textContent?.match(/门幅/g) ?? []).length).toBe(1)
+  })
+})
+

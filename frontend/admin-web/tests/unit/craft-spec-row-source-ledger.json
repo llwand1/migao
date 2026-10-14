@@ -1,0 +1,22 @@
+{
+  "why": "`craftSpecRows()`（lib/craft-display.ts）会**带上「门幅」**行 —— 凡屏幕上**另有**一处印门幅的面，直调它就会把同一真值印两遍（issue #6893）。正确口径 = `lib/order-item-sku.ts::orderItemSku(...).specRows`（`craftSpecRows()` 去掉「门幅」，issue #6869/#6882 立的唯一取值口）。本台账登记**允许直调** `craftSpecRows()` 的文件：未登记即红；**台账只许缩短**（改用取值口的文件必须从台账删掉），条数**现取**（与源码实际命中数逐文件比对，防「文件已登记 ⇒ 随便加一处」）。",
+  "ledger": {
+    "src/lib/order-item-sku.ts": {
+      "count": 2,
+      "why": "取值口本身：`orderItemSku()` 取「门幅」行 + `craftRowsWithoutDoorWidth()` 排除「门幅」各一处 —— 这两处就是全仓唯一允许看到原始行的地方"
+    },
+    "src/lib/wash-label-content.ts": {
+      "count": 4,
+      "why": "水洗标正文：只 pick 工艺/加工类型/打开方式/是否定型/面料米数，**从不 pick 门幅**（门幅不是标签字段）"
+    },
+    "src/lib/order-craft-fields.ts": {
+      "count": 1,
+      "why": "下单页**写侧**取「打开方式」的展示文案：入参对象只给 `{ openCount }`（无 doorWidth）⇒ 渲染不出门幅"
+    },
+    "src/app/(dashboard)/orders/new/page.tsx": {
+      "count": 1,
+      "why": "下单页工艺预览：入参只给 cuttingMode/openCount/style/formula 四项，**不含 doorWidth** ⇒ 渲染不出门幅"
+    }
+  },
+  "definition_site": "src/lib/craft-display.ts（`craftSpecRows` 的定义处，不算调用）"
+}

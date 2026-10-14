@@ -119,6 +119,33 @@ describe('OrderDetail 商品明细展示工艺规格', () => {
     expect(screen.getByText(/门幅2\.8米/)).toBeInTheDocument()
   })
 
+  /**
+   * issue #6893：「门幅」在同一格里**只许出现一次**。
+   *
+   * 改前这一格印了两遍：行内拼 `门幅2.8米`，`CraftSpecList` 里的 `craftSpecRows()` **又**有一行
+   * 「门幅」（该函数会带上门幅，见 `lib/craft-display.ts` 的字段表）⇒ 同一真值两处，外加一个
+   * 只有标题没有内容的「工艺规格」组（§31 P2 / §4.9「一份 spec 一处渲染」）。
+   *
+   * 判据按**格的 textContent** 数「门幅」次数（跨 span 的那份 `getByText` 抓不到 ⇒ 旧判据恒绿）。
+   * 红证：`CraftSpecList` 改回直用 `craftSpecRows(source)` ⇒ 计数 2 且「工艺规格」组出现 ⇒ 必红。
+   */
+  it('同一格里「门幅」只印一次、不出现空的「工艺规格」组（issue #6893）', async () => {
+    mockGetOrder.mockResolvedValue({
+      data: { data: orderWith({ colorName: '灰色', doorWidth: '2.8米' }) },
+    })
+
+    render(<OrderDetailPage />)
+
+    const cell = (await screen.findByText(/门幅2\.8米/)).closest('td')
+    // 判据 = 这一格的 textContent 里「门幅」**恰好一次**，且不含「工艺规格」组标题。
+    // ⚠️ 这里**不写** `expect(cell).not.toBeNull()` —— 存在性断言是弱断言，
+    // `.github/weak-assert-baseline.json` 的门禁（存量只许非增 / 新增一律 fail-closed）会当场判红
+    // （CI 首轮就是这么红的）。`toHaveLength` / `not.toContain` 都是触内容的强断言：
+    // 格子找不到 ⇒ 匹配数 0 ⇒ 必红。
+    expect(cell?.textContent?.match(/门幅/g) ?? []).toHaveLength(1)
+    expect(cell?.textContent ?? '').not.toContain('工艺规格')
+  })
+
   it('渲染算料口径：总褶数/褶数（每片）/幅数/褶倍/米数/是否对花/花距（§4.9 ②）—— ⚠️ #4876 起**不再渲染「褶距」**', async () => {
     mockGetOrder.mockResolvedValue({
       data: {

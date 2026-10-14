@@ -20,7 +20,7 @@ import { PRINT_TARGET_SPECS, usePrintDoc, type PrintTarget } from '@/lib/print-d
 import OrderFeeBreakdown from '@/components/orders/OrderFeeBreakdown'
 import type { Order, OrderItem, LogisticsFormData, ProcessingOrder, OrderStatus } from '@/types'
 import { normalizeOrderStatus, displayOrderStatus } from '@/types'
-import { craftSpecRows } from '@/lib/craft-display'
+import { craftRowsWithoutDoorWidth } from '@/lib/order-item-sku'
 // 整卷售卖的分配文案（issue #5846）：**同一份**渲染实现（含负差额告警）——
 // 该函数/组件此前只在明细组件里、**没有任何页面渲染它**（功能是没接线的死代码）。
 import { RollAllocationNote } from '@/components/orders/OrderItemList'
@@ -850,7 +850,10 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  * 缺值不渲染：无任何工艺键 ⇒ 整块不出现（存量单形态）；**绝不**出现 undefined/null/NaN。
  */
 function CraftSpecList({ source }: { source?: Record<string, unknown> }) {
-  const rows = craftSpecRows(source)
+  // 🔴 issue #6893：改前直调 `craftSpecRows(source)` —— 它会带出「门幅」行，而本表「规格尺寸」列
+  // 上面一行已经印了 `门幅${pi.doorWidth}` ⇒ 同一真值印两处（§31 P2）+ 一个只有标题的
+  // 「工艺规格」组。口径 = `craftRowsWithoutDoorWidth()`（= `orderItemSku().specRows` 的同一实现）。
+  const rows = craftRowsWithoutDoorWidth(source)
   if (rows.length === 0) return null
   return (
     <div className="mt-1 space-y-0.5" data-testid="order-craft-spec">

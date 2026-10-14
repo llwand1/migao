@@ -753,3 +753,30 @@ describe('OrderItemList', () => {
     })
   })
 })
+
+/**
+ * issue #6893：「门幅」在同一行块里**只许出现一次**。
+ * 改前 `craftRows`（= `craftSpecRows()` 去掉算料口径）里**含门幅**，而上面那行已经印了
+ * 「门幅: 2.8米」⇒ 同一真值两处，并多出一个只有一行的「工艺规格」组。
+ */
+describe('门幅不重复（issue #6893）', () => {
+  it('同一行块里「门幅」只印一次，且不为它单开一个「工艺规格」组', () => {
+    const { container } = render(
+      <OrderItemList
+        items={[makeItem({ processingInfo: { colorName: '米白', doorWidth: '2.8米' } })]}
+      />
+    )
+    expect((container.textContent?.match(/门幅/g) ?? []).length).toBe(1)
+    expect(screen.queryByText('工艺规格')).toBeNull()
+  })
+
+  it('带真工艺键 ⇒ 「工艺规格」组照常渲染（正向对照：别把该组一起砍掉）', () => {
+    const { container } = render(
+      <OrderItemList items={[makeItem({ processingInfo: { craft: '韩褶', doorWidth: '2.8米' } })]} />
+    )
+    expect(screen.getByText('工艺规格')).toBeInTheDocument()
+    expect(screen.getByText('韩褶')).toBeInTheDocument()
+    expect((container.textContent?.match(/门幅/g) ?? []).length).toBe(1)
+  })
+})
+

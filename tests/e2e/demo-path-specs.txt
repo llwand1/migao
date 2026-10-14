@@ -20,3 +20,4 @@ e2e/specs/chat/mibao-minimize-layout.spec.ts
 e2e/specs/catalog/categories.spec.ts
 e2e/specs/smoke/pages-render.spec.ts
 e2e/specs/orders/processing-orders.spec.ts
+e2e/specs/orders/screen-product-identity.spec.ts
