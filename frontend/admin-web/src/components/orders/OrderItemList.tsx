@@ -28,9 +28,10 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { craftSpecRows, isCraftSpecKey, type CraftSpecRow } from '@/lib/craft-display'
-// 商品身份（货号 / 颜色 / 门幅）的唯一读取口 —— issue #6882
-import { orderItemSku } from '@/lib/order-item-sku'
+import { isCraftSpecKey, type CraftSpecRow } from '@/lib/craft-display'
+// 商品身份（货号 / 颜色 / 门幅）的唯一读取口 —— issue #6882；`craftRowsWithoutDoorWidth` = 同一口径
+// 「工艺行但不要门幅」（issue #6893：门幅本行已单独印一处）
+import { craftRowsWithoutDoorWidth, orderItemSku } from '@/lib/order-item-sku'
 import { lineSubtotal } from '@/lib/order-amount'
 // 加工费的行级展示（读 detail / 编算式 / 判未定价）**issue #5843 起住在共享层** ——
 // 订单详情页的「费用构成」区消费的是**同一份**实现（同一个数不许有两种显示）。
@@ -288,7 +289,9 @@ function ItemRow({ item }: { item: OrderItem }) {
   // 非工艺键的原始键值兜底行（内部键名）默认收起 —— issue #4426
   const [otherOpen, setOtherOpen] = useState(false)
 
-  const specRows = craftSpecRows(item.processingInfo)
+  // 🔴 issue #6893：`craftRowsWithoutDoorWidth`（而非直调 `craftSpecRows`）—— 「门幅」在本行块里
+  // 已经单独印了一处（`门幅: …`），组里再来一遍就是同一真值两处。
+  const specRows = craftRowsWithoutDoorWidth(item.processingInfo)
   // 工艺键已由规格块按标签展示 ⇒ 兜底行只留非工艺键（同一真值不重复展示）
   const otherEntries = Object.entries(item.processingInfo ?? {}).filter(
     ([key]) => !isCraftSpecKey(key)

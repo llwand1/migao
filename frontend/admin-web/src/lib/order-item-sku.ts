@@ -73,6 +73,21 @@ function text(value: unknown): string {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : ''
 }
 
+/**
+ * `craftSpecRows()` **去掉「门幅」** —— 屏幕 / 纸面凡**另有**一处印门幅的面都用它（issue #6893）。
+ *
+ * 为什么必须收敛成**一个** helper：`craftSpecRows()` 会带出「门幅」行，而屏幕上很多地方另印一处
+ * （列表/详情的「门幅:」、加工单属性行、纸面单据的门幅列）⇒ 直调它 = 同一真值印两处。
+ * 实测（issue #6893）曾散成 4 处重复：详情「规格尺寸」格、详情采购明细块、加工单快照块、
+ * 加工单「复制全部」文本。收口后**任何**"要工艺行但不要门幅"的面都调这里。
+ *
+ * ⚠️ 入参是**行对象**（`processingInfo` 在内部）还是**扁平的 `processingInfo` 本身**都行 ——
+ * `craftSpecRows` 直读键，两种形态都能取到值（加工单快照的行是**扁平**的：`it.doorWidth`）。
+ */
+export function craftRowsWithoutDoorWidth(source: unknown): CraftSpecRow[] {
+  return craftSpecRows(source).filter((row) => row.label !== '门幅')
+}
+
 export function orderItemSku(item: OrderItemSkuSource): OrderItemSku {
   const rows = craftSpecRows(item.processingInfo)
   const info = (item.processingInfo ?? {}) as Record<string, unknown>
@@ -81,6 +96,6 @@ export function orderItemSku(item: OrderItemSkuSource): OrderItemSku {
     code: text(item.skuCode) || text(item.productCode),
     color: text(info.colorName),
     doorWidth: rows.find((row) => row.label === '门幅')?.value ?? '',
-    specRows: rows.filter((row) => row.label !== '门幅'),
+    specRows: craftRowsWithoutDoorWidth(item.processingInfo),
   }
 }
